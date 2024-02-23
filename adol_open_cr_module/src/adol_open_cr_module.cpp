@@ -144,15 +144,15 @@ void OpenCRModule::process(std::map<std::string, robotis_framework::Dynamixel *>
   ROS_INFO_COND(DEBUG_PRINT, " ======================= Tilting ======================== ");
   ROS_INFO_COND(DEBUG_PRINT, "Raw : %d, %d, %d", roll, pitch, yaw);
 
-  ros::Time update_time;
-  update_time.sec = sensors["open-cr"]->sensor_state_->update_time_stamp_.sec_;
-  update_time.nsec = sensors["open-cr"]->sensor_state_->update_time_stamp_.nsec_;
-  ros::Duration update_duration = ros::Time::now() - update_time;
-  if ((update_duration.sec * 1000000000 + update_duration.nsec) > 100000000)
-  {
-    ROS_INFO("power on");
-    publishDXLPowerMsg(1);
-  }
+  // ros::Time update_time;
+  // update_time.sec = sensors["open-cr"]->sensor_state_->update_time_stamp_.sec_;
+  // update_time.nsec = sensors["open-cr"]->sensor_state_->update_time_stamp_.nsec_;
+  // ros::Duration update_duration = ros::Time::now() - update_time;
+  // if ((update_duration.sec * 1000000000 + update_duration.nsec) > 100000000)
+  // {
+  //   ROS_INFO("power on");
+  //   publishDXLPowerMsg(1);
+  // }
 
   uint8_t button_flag = sensors["open-cr"]->sensor_state_->bulk_read_table_["button"];
   result_["button_mode"] = button_flag & 0x01;
