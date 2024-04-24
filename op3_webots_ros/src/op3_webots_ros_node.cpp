@@ -5,7 +5,9 @@
 
 #include <webots_ros/set_int.h>
 #include <webots_ros/set_float.h>
+#include <webots_ros/get_uint64.h>
 #include <webots_ros/Float64Stamped.h>
+#include <webots_ros/node_get_center_of_mass.h>
 
 #include <string>
 
@@ -26,8 +28,9 @@ std::string webots_joint_names[20] = {
     "Neck" /*ID19*/, "Head" /*ID20*/
 };
 
-double goal_joint_angles_rad[20];
+double goal_joint_angles_rad[20] = {0};
 double present_joint_angles_rad[20];
+double present_joint_torques_Nm_[20];
 
 bool goal_joint_angle_rcv_flag[20];
 
@@ -37,27 +40,47 @@ ros::Publisher present_joint_state_publisher;
 
 ros::Subscriber goal_pos_subs[20];
 ros::Subscriber present_pos_subs[20];
+ros::Subscriber present_torque_subs[20];
 
 ros::ServiceClient webots_time_step;
 
 ros::ServiceClient set_pos_clients[20];
 ros::ServiceClient pos_sensor_enable_clients[20];
+ros::ServiceClient torque_feedback_enable_clients_[20];
+
+ros::ServiceClient supervisor_node_client_;
+
+ros::ServiceClient get_com_client_;
+
+sensor_msgs::JointState joint_state_msg_;
+
+webots_ros::node_get_center_of_mass com_srv_;
+
+ros::Publisher present_com_publisher_;
+
+uint64_t supervisor_node_ = 0;;
 
 void posCommandCallback(const std_msgs::Float64::ConstPtr &msg, const int &joint_idx);
 void presentJointAnglesCallback(const webots_ros::Float64Stamped::ConstPtr &msg, const int &joint_idx);
+void presentJointTorquesCallback(const webots_ros::Float64Stamped::ConstPtr &msg, const int &joint_idx);
 
 void initializePositionSensors();
+void initializeTorqueFeedback();
 
 void sendPresentPosition();
 void setGoalPosition();
+void getCOMofRobot();
 
 void process();
 
 int main(int argc, char **argv)
 {
-  ros::init(argc, argv, "op3_wevots_node");
+  ros::init(argc, argv, "op3_webots_node");
   ros::NodeHandle nh;
   
+  // Wait for the Webots and ROS controller
+  ros::service::waitForService("/robot/time_step");
+
   /* Publishers, Subsribers, and Service Clients */
   for(int i = 0; i < 20; i++)
   {
@@ -73,20 +96,43 @@ int main(int argc, char **argv)
     std::string pos_sensor_enable_srv_name = "/" + webots_joint_names[i] + "S/enable";  
     pos_sensor_enable_clients[i] = nh.serviceClient<webots_ros::set_int>(pos_sensor_enable_srv_name);
 
+    // make service clients for enabling joint torque feedback in webots
+    std::string torque_feedback_enable_srv_name = "/" + webots_joint_names[i] + "/torque_feedback_sensor/enable";  
+    torque_feedback_enable_clients_[i] = nh.serviceClient<webots_ros::set_int>(torque_feedback_enable_srv_name);
+
     // make subscribers for getting present pos angle rad from webots
     std::string pos_sensor_topic_name = "/" + webots_joint_names[i] + "S/value";  
     present_pos_subs[i] = nh.subscribe<webots_ros::Float64Stamped>(pos_sensor_topic_name, 1, boost::bind(presentJointAnglesCallback, _1, i));
+
+    // make subscribers for getting present torque Nm from webots
+    std::string torque_feedback_topic_name = "/" + webots_joint_names[i] + "/torque_feedback";  
+    present_torque_subs[i] = nh.subscribe<webots_ros::Float64Stamped>(torque_feedback_topic_name, 1, boost::bind(presentJointTorquesCallback, _1, i));
   }
   
-  //make present joint state publisher
+  // make present joint state publisher
   present_joint_state_publisher = nh.advertise<sensor_msgs::JointState>("/robotis_op3/joint_states", 1);
-  webots_time_step = nh.serviceClient<webots_ros::set_int>("/robot/time_step");
 
+  // make service client for time step
+  webots_time_step = nh.serviceClient<webots_ros::set_int>("/robot/time_step");
   time_step_srv.request.value = TIME_STEP_MS;
+
+  // get supervisor node
+  supervisor_node_client_ = nh.serviceClient<webots_ros::get_uint64>("/supervisor/get_self");
+  webots_ros::get_uint64 supervisor_node_srv;
+  supervisor_node_srv.request.ask = true;
+  supervisor_node_client_.call(supervisor_node_srv);
+  supervisor_node_ = supervisor_node_srv.response.value;
+
+  // make service client for com
+  get_com_client_ = nh.serviceClient<webots_ros::node_get_center_of_mass>("/supervisor/node/get_center_of_mass");
+
+  // make a com publisher
+  present_com_publisher_ = nh.advertise<geometry_msgs::Point>("/robotis_op3/present_center_of_mass", 1);
 
   usleep(1000*1000);
   // Initialize Webots
   initializePositionSensors();
+  initializeTorqueFeedback();
   webots_time_step.call(time_step_srv);
   usleep(8*1000);
   ros::spinOnce();
@@ -96,11 +142,16 @@ int main(int argc, char **argv)
   ros::spinOnce();
   
   ros::Rate rate(125);
+
   while(ros::ok())
   {
-    ros::spinOnce();
+    getCOMofRobot();
+    setGoalPosition();
+    sendPresentPosition();
+
     webots_time_step.call(time_step_srv);
-    process();
+    ros::spinOnce();
+    //process();
     rate.sleep();
   }
   return 0;
@@ -123,7 +174,7 @@ void process()
   //   goal_pos_flag = true;
   //   ros::spinOnce();
   // }
-
+  getCOMofRobot();
   setGoalPosition();
   sendPresentPosition();
 }
@@ -140,6 +191,18 @@ void initializePositionSensors()
   }
 }
 
+void initializeTorqueFeedback()
+{
+  webots_ros::set_int srv;
+  srv.request.value = TIME_STEP_MS;
+  for(int i = 0; i < 20; i++)
+  {
+    torque_feedback_enable_clients_[i].call(srv);
+    if (srv.response.success == 0)
+      ROS_ERROR_STREAM("Failed to enable the torque feedback of " << webots_joint_names[i]);
+  }
+}
+
 void posCommandCallback(const std_msgs::Float64::ConstPtr &msg, const int &joint_idx)
 {
   goal_joint_angles_rad[joint_idx] = msg->data;
@@ -151,19 +214,29 @@ void presentJointAnglesCallback(const webots_ros::Float64Stamped::ConstPtr &msg,
   present_joint_angles_rad[joint_idx] = msg->data;
 }
 
+void presentJointTorquesCallback(const webots_ros::Float64Stamped::ConstPtr &msg, const int &joint_idx)
+{
+  present_joint_torques_Nm_[joint_idx] = msg->data;
+}
+
 void sendPresentPosition()
 {
-  sensor_msgs::JointState msg;
-  msg.header.stamp = ros::Time::now();
+  joint_state_msg_.name.clear();
+  joint_state_msg_.position.clear();
+  joint_state_msg_.velocity.clear();
+  joint_state_msg_.effort.clear();
+
+  joint_state_msg_.header.stamp = ros::Time::now();
+    
   for(int i = 0; i < 20; i++)
   {
-    msg.name.push_back(op3_joint_names[i]);
-    msg.position.push_back(present_joint_angles_rad[i]);
-    msg.velocity.push_back(0);
-    msg.effort.push_back(0);
+    joint_state_msg_.name.push_back(op3_joint_names[i]);
+    joint_state_msg_.position.push_back(present_joint_angles_rad[i]);
+    joint_state_msg_.velocity.push_back(0);
+    joint_state_msg_.effort.push_back(present_joint_torques_Nm_[i]);
   }
 
-  present_joint_state_publisher.publish(msg);
+  present_joint_state_publisher.publish(joint_state_msg_);
 }
 
 void setGoalPosition()
@@ -178,4 +251,12 @@ void setGoalPosition()
     if (srv.response.success == 0)
       ROS_ERROR_STREAM("Failed to set the goal position of " << webots_joint_names[i]);
   }
+}
+
+void getCOMofRobot()
+{
+  com_srv_.request.node = supervisor_node_;
+  get_com_client_.call(com_srv_);
+
+  present_com_publisher_.publish(com_srv_.response.centerOfMass);
 }
