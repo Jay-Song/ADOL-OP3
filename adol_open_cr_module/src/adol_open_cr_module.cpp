@@ -105,7 +105,7 @@ void OpenCRModule::process(std::map<std::string, robotis_framework::Dynamixel *>
   if (sensors["open-cr"] == NULL)
     return;
 
-  int16_t gyro_x = sensors["open-cr"]->sensor_state_->bulk_read_table_["gyro_x"];
+  int16_t gyro_x = sensors["open-cr"]->sensor_state_->bulk_read_table_["gyro_x"]; 
   int16_t gyro_y = sensors["open-cr"]->sensor_state_->bulk_read_table_["gyro_y"];
   int16_t gyro_z = sensors["open-cr"]->sensor_state_->bulk_read_table_["gyro_z"];
 
@@ -137,9 +137,9 @@ void OpenCRModule::process(std::map<std::string, robotis_framework::Dynamixel *>
   int16_t yaw   = sensors["open-cr"]->sensor_state_->bulk_read_table_["yaw"];
   
   // need to check the values
-  result_["roll"]  = roll;
-  result_["pitch"] = pitch;
-  result_["yaw"]   = yaw;
+  result_["roll"]  = roll*0.1*M_PI/180.0;
+  result_["pitch"] = pitch*0.1*M_PI/180.0;
+  result_["yaw"]   = yaw*0.1*M_PI/180.0;
 
   ROS_INFO_COND(DEBUG_PRINT, " ======================= Tilting ======================== ");
   ROS_INFO_COND(DEBUG_PRINT, "Raw : %d, %d, %d", roll, pitch, yaw);
