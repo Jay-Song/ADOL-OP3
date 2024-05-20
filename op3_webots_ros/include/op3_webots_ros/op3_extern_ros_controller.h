@@ -5,7 +5,7 @@
 
 #include <std_msgs/Float64.h>
 #include <sensor_msgs/JointState.h>
-
+#include <sensor_msgs/Imu.h>
 #include <webots/Supervisor.hpp>
 
 #define N_MOTORS (20)
@@ -30,6 +30,11 @@ public:
   void getPresentJointTorques();
   
   void getCurrentRobotCOM();
+  void getIMUOutput();
+
+  void publishPresentJointStates();
+  void publishIMUOutput();
+  void publishCOMData();
 
   void myStep();
   void wait(int ms);
@@ -45,9 +50,14 @@ public:
   double current_joint_torque_Nm_[N_MOTORS];
 
   // center of mass
+  geometry_msgs::Vector3 com_m_;
   double current_com_m_[3];
   double previous_com_m_[3];
   double current_com_vel_mps_[3];
+
+  // imu
+  double torso_xyz_m_[3];
+  sensor_msgs::Imu imu_data_;
 
   // devices
   webots::LED* head_led_;
@@ -55,18 +65,26 @@ public:
   webots::Camera* camera_;
   webots::Speaker* speaker_;
   webots::Keyboard* key_board_; 
+  
+  webots::Gyro *gyro_;
+  webots::Accelerometer *acc_;
+  webots::InertialUnit *iu_;
+
+
   webots::Motor* motors_[N_MOTORS];
   webots::PositionSensor* encoders_[N_MOTORS];
-
+  
   webots::Node *torso_node_;
   webots::Node *rf_node_, *lf_node_;
 
 private:
   void queueThread();
   void posCommandCallback(const std_msgs::Float64::ConstPtr &msg, const int &joint_idx);
-  void publishPresentJointStates();
+
 
   ros::Publisher present_joint_state_publisher_;
+  ros::Publisher imu_data_publisher_;
+  ros::Publisher com_data_publisher_;
 
   bool desired_joint_angle_rcv_flag_[20];
 

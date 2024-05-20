@@ -7,6 +7,9 @@
 #include <webots/LED.hpp>
 #include <webots/Speaker.hpp>
 #include <webots/Camera.hpp>
+#include <webots/Gyro.hpp>
+#include <webots/Accelerometer.hpp>
+#include <webots/InertialUnit.hpp>
 
 std::string op3_joint_names[20] = {
     "r_sho_pitch", "l_sho_pitch", "r_sho_roll", "l_sho_roll", "r_el", "l_el",
@@ -55,9 +58,6 @@ OP3ExternROSController::~OP3ExternROSController()
   queue_thread_.join();
 }
 
-
-//   void run();
-
 void OP3ExternROSController::initialize()
 {
   cout << "--- Demo of ROBOTIS OP3 ---" << endl;
@@ -68,11 +68,19 @@ void OP3ExternROSController::initialize()
 
   head_led_ = getLED("HeadLed");
   body_led_ = getLED("BodyLed");
-  camera_ = getCamera("Camera");
+  //camera_ = getCamera("Camera");
+  
+  gyro_ = getGyro("Gyro");
+  acc_  = getAccelerometer("Accelerometer");
+  iu_ = getInertialUnit("inertial unit");
+
   speaker_ = getSpeaker("Speaker");
   key_board_ = getKeyboard();
-
-  camera_->enable(time_step_ms_);
+  
+  gyro_->enable(time_step_ms_);
+  acc_->enable(time_step_ms_);
+  iu_->enable(time_step_ms_);
+  //camera_->enable(time_step_ms_);
   key_board_->enable(time_step_ms_);
 
   // initialize motors
@@ -82,6 +90,7 @@ void OP3ExternROSController::initialize()
 
     // enable torque feedback
     motors_[i]->enableTorqueFeedback(time_step_ms_);
+    motors_[i]->setControlPID(50, 0, 0);
 
     // initialize encoders
     std::string sensorName = webots_joint_names[i];
@@ -89,6 +98,10 @@ void OP3ExternROSController::initialize()
     encoders_[i] = getPositionSensor(sensorName);
     encoders_[i]->enable(time_step_ms_);
   }
+
+  // for knee
+  // motors_[12]->setControlPID(75, 0, 0);
+  // motors_[13]->setControlPID(75, 0, 0);
 
   // making subscribers and ros spin
   queue_thread_ = boost::thread(boost::bind(&OP3ExternROSController::queueThread, this));
@@ -99,15 +112,16 @@ void OP3ExternROSController::process()
   getPresentJointAngles();
   getPresentJointTorques();
   getCurrentRobotCOM();
+  getIMUOutput();
 
   publishPresentJointStates();
+  publishIMUOutput();
+  publishCOMData();
 
   setDesiredJointAngles();
   
   myStep();
 }
-
-
 
 void OP3ExternROSController::setDesiredJointAngles()
 {
@@ -148,6 +162,30 @@ void OP3ExternROSController::getCurrentRobotCOM()
   current_com_vel_mps_[0] = (current_com_m_[0] - previous_com_m_[0]) / time_step_sec_;
   current_com_vel_mps_[1] = (current_com_m_[1] - previous_com_m_[1]) / time_step_sec_;
   current_com_vel_mps_[2] = (current_com_m_[2] - previous_com_m_[2]) / time_step_sec_;
+
+  com_m_.x = current_com_m_[0];
+  com_m_.y = current_com_m_[1];
+  com_m_.z = current_com_m_[2];
+}
+
+void OP3ExternROSController::getIMUOutput()
+{
+  const double* gyro_rps = gyro_->getValues();
+  const double* acc_mps2 = acc_->getValues();
+  const double* quat = iu_->getQuaternion();
+
+  imu_data_.angular_velocity.x = gyro_rps[0];
+  imu_data_.angular_velocity.y = gyro_rps[1];
+  imu_data_.angular_velocity.z = gyro_rps[2];
+
+  imu_data_.linear_acceleration.x = acc_mps2[0];
+  imu_data_.linear_acceleration.y = acc_mps2[1];
+  imu_data_.linear_acceleration.z = acc_mps2[2];
+
+  imu_data_.orientation.x = quat[0];
+  imu_data_.orientation.y = quat[1];
+  imu_data_.orientation.z = quat[2];
+  imu_data_.orientation.w = quat[3];
 }
 
 void OP3ExternROSController::publishPresentJointStates()
@@ -170,6 +208,15 @@ void OP3ExternROSController::publishPresentJointStates()
   present_joint_state_publisher_.publish(joint_state_msg_);
 }
 
+void OP3ExternROSController::publishIMUOutput()
+{
+  imu_data_publisher_.publish(imu_data_);
+}
+
+void OP3ExternROSController::publishCOMData()
+{
+  com_data_publisher_.publish(com_m_);
+}
 
 void OP3ExternROSController::queueThread()
 {
@@ -181,6 +228,8 @@ void OP3ExternROSController::queueThread()
   /* Publishers, Subsribers, and Service Clients */
   // make present joint state publisher
   present_joint_state_publisher_ = ros_node.advertise<sensor_msgs::JointState>("/robotis_op3/joint_states", 1);
+  imu_data_publisher_ = ros_node.advertise<sensor_msgs::Imu>("/adol/op3/webots/imu",1);
+  com_data_publisher_ = ros_node.advertise<geometry_msgs::Vector3>("adol/op3/webots/com", 1);
 
   ros::Subscriber goal_pos_subs[20];
 

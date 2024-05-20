@@ -14,8 +14,8 @@ WorldInfo {
   basicTimeStep 8
 }
 Viewpoint {
-  orientation 0.11084473675045414 0.25856043799711953 -0.9596144768798875 0.840281555844395
-  position -1.6259803165200228 2.6211660457366923 0.7738684241522542
+  orientation -0.21330010458045784 0.2113459390792094 0.953853216915838 1.6272156543704595
+  position 0.562239037741489 -2.447558055557704 1.3939835768954514
   follow "ROBOTIS OP3"
 }
 TexturedBackground {
@@ -43,4 +43,8 @@ RobotisOp3 {
   supervisor TRUE
   cameraWidth 320
   cameraHeight 180
+  bodySlot [
+    InertialUnit {
+    }
+  ]
 }
