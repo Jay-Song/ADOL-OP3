@@ -10,6 +10,8 @@ int main(int argc, char **argv)
 
   controller->initialize();
 
+  ros::Duration(0.3).sleep();
+
   ros::Rate rate(125);
 
   while(ros::ok())

@@ -228,7 +228,7 @@ void OP3ExternROSController::queueThread()
   /* Publishers, Subsribers, and Service Clients */
   // make present joint state publisher
   present_joint_state_publisher_ = ros_node.advertise<sensor_msgs::JointState>("/robotis_op3/joint_states", 1);
-  imu_data_publisher_ = ros_node.advertise<sensor_msgs::Imu>("/adol/op3/webots/imu",1);
+  imu_data_publisher_ = ros_node.advertise<sensor_msgs::Imu>("/adol/op3/webots/imu", 1);
   com_data_publisher_ = ros_node.advertise<geometry_msgs::Vector3>("adol/op3/webots/com", 1);
 
   ros::Subscriber goal_pos_subs[20];
