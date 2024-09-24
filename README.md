@@ -2,7 +2,7 @@
 
 1. Install ros packages for webots
 
-`$ sudo apt-get instlal ros-noetic-webots-ros`
+`$ sudo apt-get install ros-noetic-webots-ros`
 
 ## **bashrc Setting**
 
